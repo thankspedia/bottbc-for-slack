@@ -2,6 +2,7 @@
 ========================================================================
 This is a step-by-step guide to install and start Slack BOT for tBC.
 
+![image](https://github.com/thankspedia/bottbc-slack/assets/88827003/86dec8c1-5617-4109-bc53-f52c4aa93a89)
 
 #### Install the Slack BOT for tBC ####
 
