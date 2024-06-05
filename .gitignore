@@ -1,0 +1,7 @@
+.env
+node_modules
+.settings.json
+package-lock.json
+tmp
+ls-*
+
