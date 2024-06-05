@@ -22,7 +22,7 @@ dotenvFromSettings();
 console.log( 'SLACK_TOKEN', process.env.SLACK_TOKEN );
 const web = new SlackWebClient( process.env.SLACK_TOKEN );
 
-// Instanciate a API context object of tBC Application System.
+// Instanciate a factory of API context object for tBC Application System.
 const context_factory = load_context_factory();
 
 
@@ -100,6 +100,7 @@ async function procedure(nargs) {
 }
 
 
+// Define a utility to parse a specified request body.
 function parse_request_body( text_request_body ) {
   try {
     return JSON.parse( text_request_body );
@@ -121,17 +122,25 @@ function __create_middleware() {
         console.log( 'json from slack:', json );
 
         // See the command type. See Slack API documentation.
+
+        // Respond to a URL verification challenge from Slack server
         if ( json.type  === 'url_verification' ) {
+          // Respond to the challenge.
           res.status(200).send( json.challenge ).end();
+
+
         } else if ( json.type === 'event_callback' ) {
 
+          // Respond to a URL verification challenge from Slack server
           if ( typeof json.event.bot_id === 'string' ) {
             // ignore
             res.status(200).json({status:'succeeded', reason : 'ignored'     }).end();
           } else {
             try {
+              // Get the message text from Slack server.
               const receivedText = json.event.text.replace( /<@[a-zA-Z0-9]+>/g,'' );
 
+              // Ask the Slack server to send a message. Recite it to the user on the Slack.
               await web.chat.postMessage({
                 // channel: '#general',
                 channel: json.event.channel,
@@ -141,36 +150,48 @@ function __create_middleware() {
                 // text : message,
               });
 
+              // Create a tBC API context object.
               const context = (await context_factory()).setOptions({ suppressSuccessfulReport:false, autoCommit:true, showReport:true, coloredReport:true, reportMethod:'stderr' });
+
+              // Initialize name arguments.
               const nargs={
-                scope_id : 'local',
-                default_parent_user_id : null,
+                scope_id                : 'local',
+                default_parent_user_id  : null,
                 default_parent_username : 'ttc',
-                username            : 'ttc',
-                member_username     : 'matsushima',
-                message_text : receivedText,
-                message_content_type : 'content_text',
+                username                : 'ttc',
+                member_username         : 'matsushima',
+                message_text            : receivedText,
+                message_content_type    : 'content_text',
               };
+
+              // Execute our defined procedure in the created context.
               context.executeTransaction( procedure, nargs );
 
+              // Respond to the request.
               res.status(200).json({status:'succeeded', reason : 'sent'     }).end();
+
+              // Succeeded.
               console.log( "successfully sent");
             } catch (e) {
               console.log( "failed", e );
+              // Respond that the request was unsuccessful.
               res.status(500).json({status:'failed',    reason : 'not sent' }).end();
             }
           }
         } else {
+          // Throw an error to other requests.
           res.status(404).json({status:'error', reason : 'not found' }).end();
         }
 
       } else {
+        // Error if the request is not a post request.
         res.status(404).json({status:'error', reason : 'not found' } ).end();
       }
     }
   );
 }
 
+// Create a route object as a middleware server.
 export function create_middleware() {
   const router = express.Router();
   router.use((req,res,next)=>{
@@ -189,6 +210,7 @@ export function create_middleware() {
 }
 
 
+// Define a service for our middleware.
 function createService() {
   // Initializing the app.
   const app = express();
@@ -215,9 +237,16 @@ function createService() {
 }
 
 
+// Start the service.
 createService().listen( 3002, ()=>{
   console.log( 'started port:3002' );
 });
+
+
+// That's all. Thank you very much!
+
+
+
 
 //  const context = await context_factory();
 //
