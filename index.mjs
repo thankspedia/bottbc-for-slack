@@ -29,11 +29,13 @@ const context_factory = load_context_factory();
 // Define the main procedure.
 async function procedure(nargs) {
 
-  // Connect to our postgresql database instance.
-  await this.connect_database();
+  // // Connect to our postgresql database instance.
+  // Now it is automatically connected to the database.
+  // await this.connect_database();
 
-  // Begin a database transaction.
-  await this.begin_transaction();
+  // // Begin a database transaction.
+  // Now transactions are automatically managed by the system.
+  // await this.begin_transaction();
 
   // If a default parent is specified as a username, convert it to a `user_id`.
   if ( nargs.default_parent_username ) {
@@ -92,11 +94,13 @@ async function procedure(nargs) {
     parent_message_id      : null,
   });
 
-  // Commit the current transaction.
-  await this.commit_transaction();
+  // // Commit the current transaction.
+  // Now transactions are automatically managed by the system.
+  // await this.commit_transaction();
 
-  // Disconnect from the database.
-  await this.disconnect_database();
+  // // Disconnect from the database.
+  // Now it is automatically connected to the database.
+  // await this.disconnect_database();
 }
 
 
@@ -151,7 +155,7 @@ function __create_middleware() {
               });
 
               // Create a tBC API context object.
-              const context = (await context_factory()).setOptions({ suppressSuccessfulReport:false, autoCommit:true, showReport:true, coloredReport:true, reportMethod:'stderr' });
+              const context = (await context_factory()).setOptions({ suppressSuccessfulReport:false, autoConnect:true, autoCommit:true, showReport:true, coloredReport:true, reportMethod:'stderr' });
 
               // Initialize name arguments.
               const nargs={
