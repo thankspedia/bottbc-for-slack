@@ -23,7 +23,7 @@ console.log( 'SLACK_TOKEN', process.env.SLACK_TOKEN );
 const web = new SlackWebClient( process.env.SLACK_TOKEN );
 
 // Instanciate a factory of API context object for tBC Application System.
-const context_factory = load_context_factory();
+const create_context = load_context_factory();
 
 
 // Define the main procedure.
@@ -155,7 +155,7 @@ function __create_middleware() {
               });
 
               // Create a tBC API context object.
-              const context = (await context_factory()).setOptions({ suppressSuccessfulReport:false, autoConnect:true, autoCommit:true, showReport:true, coloredReport:true, reportMethod:'stderr' });
+              const context = (await create_context()).setOptions({ suppressSuccessfulReport:false, autoConnect:true, autoCommit:true, showReport:true, coloredReport:true, reportMethod:'stderr' });
 
               // Initialize name arguments.
               const nargs={
@@ -252,7 +252,7 @@ createService().listen( 3002, ()=>{
 
 
 
-//  const context = await context_factory();
+//  const context = await create_context();
 //
 //  const nargs={
 //    scope_id : 'local',
