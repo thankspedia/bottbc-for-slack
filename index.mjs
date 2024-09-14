@@ -316,7 +316,7 @@ function __create_middleware() {
                *   channel: json.event.channel,
                *   text: receivedText ,
                *   // text: `The current time is ${(new Date()).toString() }`,
-               *   // text: `山川さん、ボットからの書き込みに成功致しました！`,
+               *   // text: `さん、ボットからの書き込みに成功致しました！`,
                *   // text : message,
                * });
                */
@@ -354,7 +354,7 @@ function __create_middleware() {
                       }
                     ],
                     // text: `The current time is ${(new Date()).toString() }`,
-                    // text: `山川さん、ボットからの書き込みに成功致しました！`,
+                    // text: `さん、ボットからの書き込みに成功致しました！`,
                     // text : message,
                   });
                 },
