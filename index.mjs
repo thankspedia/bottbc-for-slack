@@ -38,7 +38,7 @@ async function procedure(nargs) {
   } = nargs;
 
   // Fetch the current login information
-  let botapp_login_info = this.sql`
+  let botapp_login_info = await this.sql`
     SELECT
       botapp_application_id ,
       botapp_user_id        ,
@@ -57,7 +57,7 @@ async function procedure(nargs) {
 
   // If the current login information is missing, create it.
   if ( ! botapp_login_info ) {
-    this.sql`
+    await this.sql`
       INSERT INTO botapp_sessions
       (
         botapp_application_id,
@@ -153,7 +153,7 @@ async function procedure(nargs) {
         // Show an error message to the client.
         await botapp_post_message( 'ログインに成功しました。' ) ;
 
-        let botapp_login_info = this.sql`
+        let botapp_login_info = await this.sql`
           UPDATE botapp_sessions
           SET user_id = $user_id,logged_in = TRUE
           WHERE
@@ -165,6 +165,8 @@ async function procedure(nargs) {
           user_id : user_id,
         }).then(e=>e.single_row_or_null);
 
+        await this.commit_transaction();
+
         return null;
       } else {
         // The current user successfully logged in
@@ -175,11 +177,26 @@ async function procedure(nargs) {
     }
 
   } else if ( processed_text.startsWith( '/logoff' ) ) {
+
+    let botapp_login_info = await this.sql`
+      UPDATE botapp_sessions
+      SET user_id = NULL,logged_in = FALSE
+      WHERE
+        botapp_application_id = $botapp_application_id AND
+        botapp_user_id        = $botapp_user_id
+    `({
+      botapp_application_id,
+      botapp_user_id,
+    }).then(e=>e.single_row_or_null);
+
+    await this.commit_transaction();
+
     await botapp_post_message( 'ログオフしました。' ) ;
+
     return null;
   } else {
     if ( ! botapp_login_info.logged_in ) {
-      await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
+      await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
       return null;
     } else {
       // botapp_login_info
@@ -238,88 +255,9 @@ async function procedure(nargs) {
         parent_message_id      : null,
       });
 
-      await botapp_post_message( `送信しました。${'```'}${send_config.message_text}${'```'}` ) ;
+      await botapp_post_message( `送信しました。\n${'```\n'}${send_config.message_text}${'\n```\n'}` ) ;
     }
   }
-
-  return;
-
-  // // Connect to our postgresql database instance.
-  // Now it is automatically connected to the database.
-  // await this.connect_database();
-
-  // // Begin a database transaction.
-  // Now transactions are automatically managed by the system.
-  // await this.begin_transaction();
-
-  // If a default parent is specified as a username, convert it to a `user_id`.
-  if ( nargs.default_parent_username ) {
-    const { user_id } = (await this.username2user_id({ username : nargs.default_parent_username }));
-    nargs.default_parent_user_id = user_id;
-  }
-
-  // If a member user is specified as a username, convert it to a `user_id`.
-  if ( nargs.member_username != null ) {
-    const { user_id } = (await this.username2user_id({ username : nargs.member_username }));
-    nargs.member_user_id = user_id;
-  } else {
-    nargs.member_user_id = null;
-  }
-
-  // If a user is specified as a username, convert it to a `user_id`.
-  if ( nargs.username != null ) {
-    const { user_id } = (await this.username2user_id({ username : nargs.username }));
-    nargs.user_id = user_id;
-  } else {
-    nargs.user_id = null;
-  }
-
-  const profile = await this.sys_read_user_member_multiverse_profile({
-    user_id : nargs.user_id,
-    member_user_id : nargs.member_user_id,
-    multiversename : 'local',
-  });
-
-  const timeline_id = profile.profile_output_timeline_id;
-
-  //
-  // Migrate to Multiverse API (Sat, 14 Sep 2024 21:22:29 +0900)
-  //
-  // // Decide which timeline is to be sent owr messages as timeline name. See tBC glossary.
-  // const timelinename = 'local_public_output_timeline';
-  //
-  // let timeline = null;
-  //
-  //
-  // // Branch dependiing on a member user is specified or not.
-  // if ( ( nargs.member_user_id ?? false ) && ( nargs.member_user_id !== nargs.user_id ) ) {
-  //   // Retrieve the timeline id of our target timeline.
-  //   timeline = (await this.read_user_member_timeline({
-  //     user_id        : nargs.user_id,
-  //     member_user_id : nargs.member_user_id,
-  //     timelinename   : timelinename,
-  //   }));
-  // } else {
-  //
-  //   // Retrieve the timeline id of our target timeline.
-  //   timeline = (await this.read_user_timeline({
-  //     user_id      : nargs.user_id,
-  //     timelinename : timelinename,
-  //   })).singleRow;
-  //
-  // }
-
-  // Send the specified message to the timeline we retrieved in the previous line.
-  const tweet = await this.send_tweet({
-    scope_id               : nargs.scope_id,
-    default_parent_user_id : nargs.default_parent_user_id,
-    user_id                : nargs.user_id,
-    member_user_id         : nargs.member_user_id,
-    timeline_id            : timeline_id,
-    message_text           : nargs.message_text,
-    message_content_type   : nargs.message_content_type,
-    parent_message_id      : null,
-  });
 
   // // Commit the current transaction.
   // Now transactions are automatically managed by the system.
@@ -405,7 +343,16 @@ function __create_middleware() {
                   await web.chat.postMessage({
                     // channel: '#general',
                     channel: json.event.channel,
-                    text   : in_text,
+                    text : '',
+                    blocks : [
+                      {
+                        type : 'section',
+                        text : {
+                          type   : 'mrkdwn',
+                          text   : in_text,
+                        },
+                      }
+                    ],
                     // text: `The current time is ${(new Date()).toString() }`,
                     // text: `山川さん、ボットからの書き込みに成功致しました！`,
                     // text : message,
