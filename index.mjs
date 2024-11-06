@@ -253,6 +253,7 @@ async function procedure(nargs) {
         message_text           : send_config.message_text,
         message_content_type   : send_config.message_content_type,
         parent_message_id      : null,
+        quoted_message_id      : null,
       });
 
       await botapp_post_message( `送信しました。\n${'```\n'}${send_config.message_text}${'\n```\n'}` ) ;
