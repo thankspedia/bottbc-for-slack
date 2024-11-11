@@ -155,7 +155,7 @@ async function procedure(nargs) {
 
         let botapp_login_info = await this.sql`
           UPDATE botapp_sessions
-          SET user_id = $user_id,logged_in = TRUE
+          SET user_id = $user_id, logged_in = TRUE
           WHERE
             botapp_application_id = $botapp_application_id AND
             botapp_user_id        = $botapp_user_id
