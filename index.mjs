@@ -180,7 +180,7 @@ async function procedure(nargs) {
 
     let botapp_login_info = await this.sql`
       UPDATE botapp_sessions
-      SET user_id = NULL,logged_in = FALSE
+      SET user_id = NULL,logged_in = FALSE, botapp_attrs = '{}'::jsonb
       WHERE
         botapp_application_id = $botapp_application_id AND
         botapp_user_id        = $botapp_user_id
@@ -194,7 +194,36 @@ async function procedure(nargs) {
     await botapp_post_message( 'ログオフしました。' ) ;
 
     return null;
-  } else {
+  } else if ( processed_text.startsWith( '/authorize' ) ) {
+    const parsed_text = /(\/authorize)\s+(\S+)/.exec( processed_text );
+    const { profile_id } = await this.read_profile_id_from_random_token({ random_token : parsed_text[2].trim() });
+    if ( profile_id ) {
+        let botapp_login_info = await this.sql`
+          UPDATE botapp_sessions
+          SET
+            user_id       = NULL,
+            logged_in     = TRUE,
+            botapp_attrs  = jsonb_set( botapp_attrs, '{ "profile_id" }', $profile_id )
+          WHERE
+            botapp_application_id  = $botapp_application_id AND
+            botapp_user_id         = $botapp_user_id
+
+        `({
+          botapp_application_id,
+          botapp_user_id,
+          profile_id : `"${profile_id}"`,
+        }).then(e=>e.single_row_or_null);
+
+        await this.commit_transaction();
+
+        await botapp_post_message( '認証に成功しました。' ) ;
+    } else {
+      await botapp_post_message( '認証に失敗しました。' ) ;
+    }
+
+  } else if ( processed_text.startsWith( '/send' ) ) {
+    const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
+
     if ( ! botapp_login_info.logged_in ) {
       await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
       return null;
@@ -209,7 +238,7 @@ async function procedure(nargs) {
         // username                : 'ttc',
         user_id                 : botapp_login_info.user_id,
         // member_username         : // 't-matsushima',
-        message_text            : botapp_received_text,
+        message_text            : parsed_text[2],
         message_content_type    : 'content_text',
       };
 
@@ -258,6 +287,53 @@ async function procedure(nargs) {
 
       await botapp_post_message( `送信しました。\n${'```\n'}${send_config.message_text}${'\n```\n'}` ) ;
     }
+  } else {
+
+    const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
+
+    if ( ! botapp_login_info.logged_in ) {
+      await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
+      return null;
+    } else {
+      // botapp_login_info
+
+      const send_config = {
+        // Timeline API    ||  Multiverse API
+        scope_id                : 'local',
+        default_parent_user_id  : null,
+        default_parent_username : 'ttc', // FIXME
+        // username                : 'ttc',
+        user_id                 : botapp_login_info.user_id,
+        // member_username         : // 't-matsushima',
+        message_text            : parsed_text[2],
+        message_content_type    : 'content_text',
+      };
+
+      const { profile_id } = botapp_login_info;
+      const result = await this.read_gen2_profile({ profile_id })
+
+      const timeline_id = profile.profile_output_timeline_id;
+
+      // Send the specified message to the timeline we retrieved in the previous line.
+      const tweet = await this.send_tweet({
+        scope_id               : send_config.scope_id,
+        default_parent_user_id : send_config.default_parent_user_id,
+        user_id                : send_config.user_id,
+        member_user_id         : send_config.member_user_id,
+        timeline_id            : timeline_id,
+        message_text           : send_config.message_text,
+        message_content_type   : send_config.message_content_type,
+        parent_message_id      : null,
+        quoted_message_id      : null,
+      });
+
+      await botapp_post_message( `送信しました。\n${'```\n'}${send_config.message_text}${'\n```\n'}` ) ;
+    }
+
+
+
+
+
   }
 
   // // Commit the current transaction.
