@@ -222,6 +222,7 @@ async function procedure(nargs) {
     }
 
   } else if ( processed_text.startsWith( '/send' ) ) {
+    console.log( ' processed_text', processed_text );
     const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
 
     if ( ! botapp_login_info.logged_in ) {
@@ -289,50 +290,59 @@ async function procedure(nargs) {
     }
   } else {
 
-    const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
+    console.log( '/default send', botapp_login_info );
+    const parsed_text = processed_text;
+    // const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
 
     if ( ! botapp_login_info.logged_in ) {
       await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
       return null;
     } else {
-      // botapp_login_info
+      const {
+        botapp_attrs : {
+          profile_id
+        }
+      } = botapp_login_info;
+
+      const {
+       user_id        ,
+       member_user_id ,
+       multiversename ,
+      } = await this.read_multiverse_from_profile_id({ profile_id });
+
+      const profile
+        = await this.read_gen2_profile({
+          profile_id,
+        });
 
       const send_config = {
         // Timeline API    ||  Multiverse API
-        scope_id                : 'local',
-        default_parent_user_id  : null,
-        default_parent_username : 'ttc', // FIXME
-        // username                : 'ttc',
-        user_id                 : botapp_login_info.user_id,
-        // member_username         : // 't-matsushima',
-        message_text            : parsed_text[2],
+        scope_id                : multiversename,
+        default_parent_user_id  : user_id, // FIXME
+        user_id                 : member_user_id, // FIXME
+        // member_username         : // 't-matsushima', // FIXME
+        message_text            : processed_text,
         message_content_type    : 'content_text',
       };
 
-      const { profile_id } = botapp_login_info;
-      const result = await this.read_gen2_profile({ profile_id })
 
-      const timeline_id = profile.profile_output_timeline_id;
+      const timeline_id = profile.profile_output_timeline_id; // FIXME
 
       // Send the specified message to the timeline we retrieved in the previous line.
       const tweet = await this.send_tweet({
-        scope_id               : send_config.scope_id,
-        default_parent_user_id : send_config.default_parent_user_id,
-        user_id                : send_config.user_id,
-        member_user_id         : send_config.member_user_id,
+        scope_id               : multiversename, // FIXME
+        default_parent_user_id : user_id,        // FIXME
+        user_id                : member_user_id, // FIXME
+        member_user_id         : member_user_id, // FIXME this may be incorrect
         timeline_id            : timeline_id,
-        message_text           : send_config.message_text,
-        message_content_type   : send_config.message_content_type,
+        message_text           : processed_text,
+        message_content_type   : 'content_text',
         parent_message_id      : null,
         quoted_message_id      : null,
       });
 
-      await botapp_post_message( `送信しました。\n${'```\n'}${send_config.message_text}${'\n```\n'}` ) ;
+      await botapp_post_message( `送信しました。\n${'```\n'}${processed_text}${'\n```\n'}` ) ;
     }
-
-
-
-
 
   }
 
