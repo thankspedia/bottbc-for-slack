@@ -27,73 +27,148 @@ const web = new SlackWebClient( process.env.SLACK_TOKEN );
 // Instanciate a factory of API context object for tBC Application System.
 const create_context = load_context_factory();
 
+/*
+ * Parse a string like `xxxx@xxxx` and get username and member_username from it.
+ */
+const process_parsed_text = (parsed_text)=>{
+  const [
+    matched_text,
+    login_command ,
+    login_multiverse_username,
+    login_password,
+  ] = parsed_text;
+
+
+
+  // Divide the received text by a atmark into the first part and the other part.
+  const matched = /^([^@]*)@(\s+)$/.exec( login_multiverse_username.trim() )
+
+  if ( matched ) {
+    return [
+      matched_text,    // matched_text
+      login_command ,  // login_command
+      matched[2] ,     // login_username,
+      matched[1] ,     // login_member_username,
+      login_password,  // login_password
+    ];
+  } else {
+    return [
+      matched_text,    // matched_text
+      login_command ,  // login_command
+      '' ,             // login_username,
+      login_username,  // login_member_username,
+      login_password,  // login_password
+    ];
+  }
+
+};
+
 
 // Define the main procedure.
-async function procedure(nargs) {
+async function receive_request_proc(nargs) {
   const {
-    botapp_received_text  ,
-    botapp_application_id ,
-    botapp_user_id        ,
+    extapp_received_text  ,
+    extapp_app_id         ,
+    extapp_app_user_id    ,
     botapp_post_message   ,
   } = nargs;
 
-  // Fetch the current login information
-  let botapp_login_info = await this.sql`
-    SELECT
-      botapp_application_id ,
-      botapp_user_id        ,
-      user_id               ,
-      logged_in             ,
-      botapp_attrs
-    FROM
-      botapp_sessions
-    WHERE
-      botapp_application_id = $botapp_application_id AND
-      botapp_user_id        = $botapp_user_id
-  `({
-    botapp_application_id,
-    botapp_user_id,
-  }).then(e=>e.single_row_or_null);
-
-  // If the current login information is missing, create it.
-  if ( ! botapp_login_info ) {
-    await this.sql`
-      INSERT INTO botapp_sessions
+  {
+    const result = await this.sql`
+      INSERT INTO extapp_sessions
       (
-        botapp_application_id,
-        botapp_user_id,
+        extapp_app_id,
+        extapp_app_user_id,
         logged_in
       ) VALUES (
-        $botapp_application_id,
-        $botapp_user_id,
+        $extapp_app_id,
+        $extapp_app_user_id,
+        FALSE
+      )
+      ON CONFLICT (
+        extapp_app_id,
+        extapp_app_user_id
+      ) DO NOTHING
+    `({
+      extapp_app_id,
+      extapp_app_user_id,
+    }).then(e=>e.single_row_or_null);
+
+    console.log( 'extapp_sessions', result );
+  }
+
+  // Fetch the current login information
+  let extapp_login_info = await this.sql`
+    SELECT
+      es.extapp_app_id          ,
+      es.extapp_app_user_id     ,
+      (
+        (
+          emv.extapp_app_id IS NOT NULL
+        ) OR
+        (
+          ( emv.extapp_app_id IS NOT NULL ) AND
+          ( es.logged_in )
+        )
+      ) AS logged_in            ,
+      es.extapp_session_attrs   ,
+      emv.extapp_user_id        ,
+      emv.extapp_member_user_id ,
+      emv.extapp_multiversename ,
+      emv.extapp_multiverse_attrs
+    FROM
+      extapp_sessions es
+    LEFT OUTER JOIN extapp_multiverses emv ON
+      es.extapp_app_id      = emv.extapp_app_id      AND
+      es.extapp_app_user_id = emv.extapp_app_user_id
+    WHERE
+      es.extapp_app_id      = $extapp_app_id         AND
+      es.extapp_app_user_id = $extapp_app_user_id
+  `({
+    extapp_app_id,
+    extapp_app_user_id,
+  }).then(e=>e.single_row_or_null);
+
+  console.log( 'extapp_login_info ', extapp_login_info );
+
+  // If the current login information is missing, create it.
+  if ( ! extapp_login_info ) {
+    await this.sql`
+      INSERT INTO extapp_sessions
+      (
+        extapp_app_id,
+        extapp_app_user_id,
+        logged_in
+      ) VALUES (
+        $extapp_app_id,
+        $extapp_app_user_id,
         FALSE
       )
     `({
-      botapp_application_id,
-      botapp_user_id,
+      extapp_app_id,
+      extapp_app_user_id,
     }).then(e=>e.single_row_or_null);
 
-    botapp_login_info = await this.sql`
+    extapp_login_info = await this.sql`
       SELECT
-        botapp_application_id ,
-        botapp_user_id        ,
-        user_id               ,
-        logged_in             ,
-        botapp_attrs
+        extapp_app_id       ,
+        extapp_app_user_id  ,
+        logged_in           ,
+        extapp_session_attrs
       FROM
-        botapp_sessions
+        extapp_sessions
       WHERE
-        botapp_application_id = $botapp_application_id AND
-        botapp_user_id        = $botapp_user_id
+        extapp_app_id      = $extapp_app_id AND
+        extapp_app_user_id  = $extapp_app_user_id
     `({
-      botapp_application_id,
-      botapp_user_id,
+      extapp_app_id,
+      extapp_app_user_id,
     }).then(e=>e.single_row_or_null);
   }
 
 
 
-  let processed_text = botapp_received_text;
+  let processed_text = extapp_received_text;
   // Remove spaces before and after the string.
   processed_text = processed_text.trim();
 
@@ -113,8 +188,23 @@ async function procedure(nargs) {
       // End
       return null;
     } else {
-      const [  , login_command , login_username, login_password ] = parsed_text;
-      console.log( 'login', login_username, login_password );
+
+      /*
+       * Be careful with the process_parsed_text() function.
+       *
+       * It parses a string like `xxxx@xxxx` and get username and member_username from it.
+       */
+      const [
+        matched_text,
+        login_command ,
+        login_username,
+        login_member_username,
+        login_password
+      ] = process_parsed_text( parsed_text );
+
+
+      console.log( 'login', login_username, login_member_username, login_password );
+
       const row = await this.sql`
         SELECT
           u.user_id,
@@ -132,10 +222,10 @@ async function procedure(nargs) {
           u.user_id = ua.user_id
           AND u.user_state = $login_user_state
           AND ua.login_enabled = true
-          AND u.username = $login_username
+          AND u.username = $login_member_username
       `({
         login_user_state : 'active',
-        login_username   : login_username,
+        login_member_username   : login_member_username,
       }).then(e=>e.single_row_or_null);
 
       const {
@@ -149,27 +239,29 @@ async function procedure(nargs) {
       }));
 
       if ( login_info.login_password_hash  === row.login_password_hash ) {
-        // The current user successfully logged in
-        // Show an error message to the client.
+
+        /*
+         * In case the current user successfully logged in:
+         */
         await botapp_post_message( 'ログインに成功しました。' ) ;
 
-        let botapp_login_info = await this.sql`
-          UPDATE botapp_sessions
-          SET user_id = $user_id, logged_in = TRUE
+        let extapp_login_info = await this.sql`
+          UPDATE extapp_sessions
+          SET logged_in = TRUE
           WHERE
-            botapp_application_id = $botapp_application_id AND
-            botapp_user_id        = $botapp_user_id
+            extapp_app_id     = $extapp_app_id AND
+            extapp_app_user_id = $extapp_app_user_id
         `({
-          botapp_application_id,
-          botapp_user_id,
-          user_id : user_id,
+          extapp_app_id,
+          extapp_app_user_id,
         }).then(e=>e.single_row_or_null);
+
+
 
         await this.commit_transaction();
 
         return null;
       } else {
-        // The current user successfully logged in
         // Show an error message to the client.
         await botapp_post_message( 'ログインに失敗しました。' ) ;
         return null;
@@ -178,15 +270,15 @@ async function procedure(nargs) {
 
   } else if ( processed_text.startsWith( '/logoff' ) ) {
 
-    let botapp_login_info = await this.sql`
-      UPDATE botapp_sessions
-      SET user_id = NULL,logged_in = FALSE, botapp_attrs = '{}'::jsonb
+    let extapp_login_info = await this.sql`
+      UPDATE extapp_sessions
+      SET logged_in = FALSE
       WHERE
-        botapp_application_id = $botapp_application_id AND
-        botapp_user_id        = $botapp_user_id
+        extapp_app_id     = $extapp_app_id AND
+        extapp_app_user_id = $extapp_app_user_id
     `({
-      botapp_application_id,
-      botapp_user_id,
+      extapp_app_id,
+      extapp_app_user_id,
     }).then(e=>e.single_row_or_null);
 
     await this.commit_transaction();
@@ -197,26 +289,20 @@ async function procedure(nargs) {
   } else if ( processed_text.startsWith( '/authorize' ) ) {
     const parsed_text = /(\/authorize)\s+(\S+)/.exec( processed_text );
     const { profile_id } = await this.read_profile_id_from_random_token({ random_token : parsed_text[2].trim() });
+    const extapp_attrs = {
+    };
+
     if ( profile_id ) {
-        let botapp_login_info = await this.sql`
-          UPDATE botapp_sessions
-          SET
-            user_id       = NULL,
-            logged_in     = TRUE,
-            botapp_attrs  = jsonb_set( botapp_attrs, '{ "profile_id" }', $profile_id )
-          WHERE
-            botapp_application_id  = $botapp_application_id AND
-            botapp_user_id         = $botapp_user_id
+      await this.create_or_update_extapp_multiverses_by_profile_id({
+        extapp_app_id     ,
+        profile_id        ,
+        extapp_attrs       ,
+        extapp_app_user_id ,
+      });
 
-        `({
-          botapp_application_id,
-          botapp_user_id,
-          profile_id : `"${profile_id}"`,
-        }).then(e=>e.single_row_or_null);
+      await this.commit_transaction();
 
-        await this.commit_transaction();
-
-        await botapp_post_message( '認証に成功しました。' ) ;
+      await botapp_post_message( '認証に成功しました。' ) ;
     } else {
       await botapp_post_message( '認証に失敗しました。' ) ;
     }
@@ -225,29 +311,23 @@ async function procedure(nargs) {
     console.log( ' processed_text', processed_text );
     const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
 
-    if ( ! botapp_login_info.logged_in ) {
+    if ( ! extapp_login_info.logged_in ) {
       await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
       return null;
     } else {
-      // botapp_login_info
+      // extapp_login_info
 
       const send_config = {
         // Timeline API    ||  Multiverse API
         scope_id                : 'local',
-        default_parent_user_id  : null,
-        default_parent_username : 'ttc', // FIXME
+        default_parent_user_id  : extapp_login_info.user_id,
         // username                : 'ttc',
-        user_id                 : botapp_login_info.user_id,
+        user_id                 : extapp_login_info.member_user_id,
         // member_username         : // 't-matsushima',
         message_text            : parsed_text[2],
         message_content_type    : 'content_text',
       };
 
-      // If a default parent is specified as a username, convert it to a `user_id`.
-      if ( send_config.default_parent_username ) {
-        const { user_id } = (await this.username2user_id({ username : send_config.default_parent_username }));
-        send_config.default_parent_user_id = user_id;
-      }
 
       // // If a member user is specified as a username, convert it to a `user_id`.
       // if ( send_config.member_username != null ) {
@@ -290,30 +370,38 @@ async function procedure(nargs) {
     }
   } else {
 
-    console.log( '/default send', botapp_login_info );
+    console.log( '/default send', extapp_login_info );
+
     const parsed_text = processed_text;
     // const parsed_text = /(\/send)\s+([\S\s]*)/.exec( processed_text );
 
-    if ( ! botapp_login_info.logged_in ) {
+    if ( ! extapp_login_info.logged_in ) {
       await botapp_post_message( '操作を始める前にログインをして下さい。ログイン方法は\n ```/login ユーザーネーム パスワード``` とメッセージして下さい。' ) ;
       return null;
     } else {
       const {
-        botapp_attrs : {
-          profile_id
-        }
-      } = botapp_login_info;
+        extapp_session_attrs                     ,
+        extapp_user_id          : user_id        ,
+        extapp_member_user_id   : member_user_id ,
+        extapp_multiversename   : multiversename ,
+        extapp_multiverse_attrs ,
+      } = extapp_login_info;
 
-      const {
-       user_id        ,
-       member_user_id ,
-       multiversename ,
-      } = await this.read_multiverse_from_profile_id({ profile_id });
+      // const {
+      //  user_id        ,
+      //  member_user_id ,
+      //  multiversename ,
+      // } = await this.read_multiverse_from_profile_id({ profile_id });
 
-      const profile
-        = await this.read_gen2_profile({
-          profile_id,
-        });
+      // const profile = await this.read_gen2_profile({
+      //   profile_id,
+      // });
+
+      const profile = await this.sys_read_user_member_multiverse_profile({
+        user_id        ,
+        member_user_id ,
+        multiversename ,
+      });
 
       const send_config = {
         // Timeline API    ||  Multiverse API
@@ -343,7 +431,6 @@ async function procedure(nargs) {
 
       await botapp_post_message( `送信しました。\n${'```\n'}${processed_text}${'\n```\n'}` ) ;
     }
-
   }
 
   // // Commit the current transaction.
@@ -415,17 +502,17 @@ function __create_middleware() {
               const nargs={
                 // VERSION 1.
                 scope_id                : 'local',
-                default_parent_user_id  : null,
-                default_parent_username : 'ttc',
-                username                : 'ttc',
-                member_username         : 't-matsushima',
+                // default_parent_user_id  : null,
+                // default_parent_username : 'ttc',
+                // username                : 'ttc',
+                // member_username         : 't-matsushima',
                 message_text            : receivedText,
                 message_content_type    : 'content_text',
 
                 // VERSION 2.
-                botapp_received_text    : receivedText,
-                botapp_application_id   : 'slack',
-                botapp_user_id          : json.event.user,
+                extapp_received_text    : receivedText,
+                extapp_app_id           : ( 'slack' ) .trim(),
+                extapp_app_user_id      : ( json.event.user ?? '' ) .trim(),
                 botapp_post_message : async (in_text)=>{
                   await web.chat.postMessage({
                     // channel: '#general',
@@ -448,7 +535,7 @@ function __create_middleware() {
               };
 
               // Execute our defined procedure in the created context.
-              context.executeTransaction( procedure, nargs );
+              context.executeTransaction( receive_request_proc, nargs );
 
               // Respond to the request.
               res.status(200).json({status:'succeeded', reason : 'sent'     }).end();
@@ -542,5 +629,5 @@ createService().listen( 3002, ()=>{
 //    message_text : 'hello',
 //    message_content_type : 'content_text',
 //  };
-//  context.executeTransaction( procedure, nargs );
+//  context.executeTransaction( receive_request_proc, nargs );
 
