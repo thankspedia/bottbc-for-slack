@@ -263,6 +263,11 @@ async function receive_request_proc(nargs) {
       console.log( 'extapp_settings', extapp_settings );
       console.log( 'member_extapp_settings', member_extapp_settings );
 
+      /*
+       * Check if password authentication is allowed by the user and the parent
+       * user.
+       */
+
       if ( extapp_settings?.allow_children_to_login_externally !== true ) {
         console.log( 'extapp_settings?.allow_children_to_login_externally',extapp_settings?.allow_children_to_login_externally );
         /*
